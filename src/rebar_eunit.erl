@@ -4,7 +4,7 @@
 %%
 %% rebar: Erlang Build Tools
 %%
-%% Copyright (c) 2009 Dave Smith (dizzyd@dizzyd.com)
+%% Copyright (c) 2009, 2010 Dave Smith (dizzyd@dizzyd.com)
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -24,14 +24,21 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% -------------------------------------------------------------------
-%%
-%% Targets:
-%% eunit - runs eunit tests
-%% clean - remove .eunit directory
-%%
-%% Global options:
-%% verbose=1 - show extra output from the eunit test
-%% suite="foo"" - runs test/foo_tests.erl
+%% @author Dave Smith <dizzyd@dizzyd.com>
+%% @doc rebar_eunit supports the following commands:
+%% <ul>
+%%   <li>eunit - runs eunit tests</li>
+%%   <li>clean - remove .eunit directory</li>
+%% </ul>
+%% The following Global options are supported:
+%% <ul>
+%%   <li>verbose=1 - show extra output from the eunit test</li>
+%%   <li>suite="foo"" - runs test/foo_tests.erl</li>
+%% </ul>
+%% Additionally, for projects that have separate folders for the core
+%% implementation, and for the unit tests, then the following <code>rebar.config</code>
+%% option can be provided: <code>{eunit_compile_opts, [{src_dirs, ["dir"]}]}.</code>.
+%% @copyright 2009, 2010 Dave Smith
 %% -------------------------------------------------------------------
 -module(rebar_eunit).
 
@@ -51,9 +58,13 @@ eunit(Config, _File) ->
     %% Make sure ?EUNIT_DIR/ directory exists (tack on dummy module)
     ok = filelib:ensure_dir(?EUNIT_DIR ++ "/foo"),
 
+    %% grab all the test modules for inclusion in the compile stage
+    TestErls = rebar_utils:find_files("test", ".*\\.erl\$"),
+
     %% Compile erlang code to ?EUNIT_DIR, using a tweaked config
-    %% with appropriate defines for eunit
-    rebar_erlc_compiler:doterl_compile(eunit_config(Config), ?EUNIT_DIR),
+    %% with appropriate defines for eunit, and include all the test modules
+    %% as well.
+    rebar_erlc_compiler:doterl_compile(eunit_config(Config), ?EUNIT_DIR, TestErls),
 
     %% Build a list of all the .beams in ?EUNIT_DIR -- use this for cover
     %% and eunit testing. Normally you can just tell cover and/or eunit to
@@ -62,8 +73,35 @@ eunit(Config, _File) ->
     %% we do it by hand. :(
     %%
     %% TODO: Not currently compatible with package modules
-    Modules = [list_to_atom(filename:basename(N, ".beam")) ||
-                  N <- filelib:wildcard("*.beam", ?EUNIT_DIR)],
+    Beams = [filename:basename(N, ".beam") || N <- rebar_utils:beams(?EUNIT_DIR)],
+
+    %% Grab two lists of test and non-test beam files
+    {TestBeams, ModuleBeams} = lists:partition(fun(B) ->
+                                    lists:suffix("_tests", B) end, Beams),
+
+    case rebar_config:get_global(suite, undefined) of
+        undefined ->
+            %% no suite defined, so include all modules
+            RealModules = ModuleBeams,
+
+            %% exclude any test modules that have a matching module
+            TestModules = [T || T <- TestBeams,
+                              lists:member(string:left(T, length(T) - 6), RealModules) == false];
+        SuiteName ->
+            %% suite defined, so only specify the module that relates to the
+            %% suite (if any)
+            RealModules = [M || M <- ModuleBeams, SuiteName =:= M],
+
+            %% only include the test suite if the main module doesn't exist
+            TestModules = case length(RealModules) of
+                              0 -> [T || T <- TestBeams, T =:= SuiteName ++ "_tests"];
+                              _ -> []
+                          end
+    end,
+
+    %% combine the modules and associated test modules into the resulting list
+    %% of modules to run tests on.
+    Modules = [list_to_atom(M) || M <- RealModules ++ TestModules],
 
     %% TODO: If there are other wildcards specified in eunit_sources, compile them
 

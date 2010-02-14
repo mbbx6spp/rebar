@@ -4,7 +4,7 @@
 %%
 %% rebar: Erlang Build Tools
 %%
-%% Copyright (c) 2009 Dave Smith (dizzyd@dizzyd.com)
+%% Copyright (c) 2009, 2010 Dave Smith (dizzyd@dizzyd.com)
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -28,12 +28,14 @@
 
 -export([get_cwd/0,
          is_arch/1,
+         get_arch/0,
          get_os/0,
          sh/2, sh/3,
          sh_failfast/2,
          find_files/2,
          now_str/0,
-         ensure_dir/1]).
+         ensure_dir/1,
+         beam_to_mod/2, beams/1]).
 
 -include("rebar.hrl").
 
@@ -47,13 +49,16 @@ get_cwd() ->
 
 
 is_arch(ArchRegex) ->
-    Arch = erlang:system_info(system_architecture),
-    case re:run(Arch, ArchRegex, [{capture, none}]) of
+    case re:run(get_arch(), ArchRegex, [{capture, none}]) of
         match ->
             true;
         nomatch ->
             false
     end.
+
+get_arch() ->
+    Words = integer_to_list(8 * erlang:system_info(wordsize)),
+    erlang:system_info(system_architecture) ++ "-" ++ Words.
 
 get_os() ->
     Arch = erlang:system_info(system_architecture),
@@ -132,3 +137,12 @@ sh_loop(Port) ->
         {Port, {exit_status, Rc}} ->
             {error, Rc}
     end.
+
+beam_to_mod(Dir, Filename) ->
+    [Dir | Rest] = filename:split(Filename),
+    list_to_atom(filename:basename(string:join(Rest, "."), ".beam")).
+
+beams(Dir) ->
+    filelib:fold_files(Dir, ".*\.beam\$", true,
+                       fun(F, Acc) -> [F | Acc] end, []).
+
