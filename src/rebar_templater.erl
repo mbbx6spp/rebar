@@ -311,7 +311,7 @@ execute_template([{chmod, Mod, File} | Rest], TemplateType, TemplateName, Contex
         ok ->
             execute_template(Rest, TemplateType, TemplateName, Context, Force, ExistingFiles);
         {error, Reason} ->
-            ?ABORT("Failed while processing template instruction {cmod, ~b, ~s}: ~p~n",
+            ?ABORT("Failed while processing template instruction {chmod, ~b, ~s}: ~p~n",
                    [Mod, File, Reason])
     end;
 execute_template([{variables, _} | Rest], TemplateType, TemplateName, Context, Force, ExistingFiles) ->
